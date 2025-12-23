@@ -35,7 +35,7 @@ print("[ZeroOnTop] PlayerGui loaded. Starting...")
 
 task.spawn(function()
     local success, result = pcall(function()
-        return game:HttpGet("https://github.com/zeroonbottomyt/kindabroke/raw/refs/heads/main/FriendToggle.lua ", true) -- add here ur own friendtoggle.lua link
+        return game:HttpGet("https://raw.githubusercontent.com/zeroonbottomyt/kindabroke/refs/heads/main/FriendToggle.lua ", true) -- add here ur own friendtoggle.lua link
     end)
 
     if success and result then
@@ -55,7 +55,7 @@ end)
 --====================================================================--
 local CONFIG = {
     DELAY_BEFORE_SCRIPT = 8,
-    EXTERNAL_SCRIPT_URL = "https://github.com/zeroonbottomyt/kindabroke/raw/refs/heads/main/Freeze.lua ", --put here ur own freeze.lua link
+    EXTERNAL_SCRIPT_URL = "https://raw.githubusercontent.com/zeroonbottomyt/kindabroke/refs/heads/main/Freeze.lua ", --put here ur own freeze.lua link
     WARNING_TEXT = "May cause lag. Don't Leave — wait 30 minutes."
 }
 
@@ -884,4 +884,5 @@ task.spawn(function()
         buildPCGui()
         print("ZeroScripts – PC Version Loaded")
     end
+
 end)
